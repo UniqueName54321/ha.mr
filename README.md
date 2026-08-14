@@ -11,6 +11,11 @@ Compresses links and optimizes QR codes entirely in the browser, without a back-
 Text output can also use a Base3953 emoji alphabet or an experimental
 Base159629 alphabet containing every assigned printable Unicode code point.
 
+Generated browser links use the current page origin, so local development and
+forked deployments automatically point at themselves. The standalone CLI uses
+`http://shrt.beep8.xyz` by default and can be pointed elsewhere with the
+`HAMR_ROOT_URL` environment variable.
+
 ## Acknowledgements
 - https://www.npmjs.com/package/qrcode
 - https://github.com/smythp/reddit_links_dataset

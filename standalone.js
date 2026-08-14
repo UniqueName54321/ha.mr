@@ -8,6 +8,7 @@ import {
 
 const input = process.argv[2]?.trim();
 const alphabetName = process.argv[3]?.trim() || "ascii";
+const rootURL = (process.env.HAMR_ROOT_URL || "http://shrt.beep8.xyz").replace(/\/$/, "");
 if (!input) {
   console.error(`Usage: hamr <link> [ascii|qr|emoji|unicode]`);
   process.exit(1);
@@ -45,8 +46,8 @@ else if (alphabetName !== "ascii") {
 }
 
 if (alphabetName === "qr") {
-  console.log("HTTP://shrt.beep8.xyz/" + compress(input, alphabet));
+  console.log(rootURL.toUpperCase() + "/" + compress(input, alphabet));
 } else {
   const modePrefix = alphabetName === "unicode" ? "u:" : "";
-  console.log("http://shrt.beep8.xyz#" + modePrefix + compress(input, alphabet));
+  console.log(rootURL + "#" + modePrefix + compress(input, alphabet));
 }

@@ -47,6 +47,7 @@ const outputLinkElement = document.querySelector("#output-link");
 const copyOutputElement = document.querySelector("#copy-output");
 const outputRatioElement = document.querySelector("#output-ratio");
 const queryWarningElement = document.querySelector("#query-warning");
+const rootURL = window.location.origin;
 
 const qrCodeImage = document.querySelector("#qrcode");
 const qrCodeCorrectionLevelContainer = document.querySelector("#qr-correct-level-container");
@@ -94,7 +95,7 @@ function updateOutput () {
       outputRatioElement.textContent = "Output is the same length as the input";
       outputRatioElement.style.color = "gray";
     }
-    const outputURL = `http://shrt.beep8.xyz#${modePrefix}${output}`;
+    const outputURL = `${rootURL}#${modePrefix}${output}`;
     outputLinkElement.textContent = outputURL;
     outputLinkElement.href = outputURL;
     outputLinkElement.style.color = "";
@@ -102,7 +103,9 @@ function updateOutput () {
       const errorCorrection = ["L", "M", "Q", "H"][qrCodeCorrectionLevelElement.value];
       qrCodeImage.style.display = "inline";
       qrCodeCorrectionLevelContainer.style.display = "inline";
-      let qrCodeLink = `HTTP://shrt.beep8.xyz/${compress(input, outputAlphabetQR)}`;
+      // Uppercase QR URLs remain in the QR alphanumeric mode, reducing QR
+      // overhead, while still using whichever host serves this deployment.
+      let qrCodeLink = `${rootURL.toUpperCase()}/${compress(input, outputAlphabetQR)}`;
       QRCode.toDataURL(qrCodeLink, {
         errorCorrectionLevel: errorCorrection,
         scale: 8
