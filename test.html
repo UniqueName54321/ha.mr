@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
   <title>ha.mr encoding matrix test</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Hammersmith+One&display=swap');
@@ -148,7 +149,7 @@
     const matrixElement = document.querySelector("#encoding-matrix");
     const resultsElement = document.querySelector("#results");
     const statusElement = document.querySelector("#status");
-    rootURLElement.value = window.location.origin;
+    rootURLElement.value = new URL(".", import.meta.url).href.replace(/\/$/, "");
 
     const alphabets = [
       { id: "ascii", name: "Base84", description: "URL-safe text", alphabet: outputAlphabetASCII },
@@ -202,6 +203,14 @@
       return root.href.replace(/\/$/, "");
     }
 
+    function getQRRootURL (rootURL) {
+      const root = new URL(rootURL);
+      const pathname = Array.from(root.pathname, character => /[a-z]/.test(character)
+        ? `%${character.codePointAt(0).toString(16).toUpperCase()}`
+        : character).join("");
+      return `${root.protocol.toUpperCase()}//${root.host.toUpperCase()}${pathname}`.replace(/\/$/, "");
+    }
+
     function formatEncoding (source, root, encoding) {
       const { algorithm, alphabet } = encoding;
       let effectiveAlgorithm = algorithm;
@@ -236,7 +245,7 @@
         if (effectiveAlgorithm.id === "enur") marker = alphabet.id === "unicode" ? "eu:" : "e:";
       }
       const separator = alphabet.id === "qr" ? "/" : "#";
-      const outputRoot = alphabet.id === "qr" ? root.toUpperCase() : root;
+      const outputRoot = alphabet.id === "qr" ? getQRRootURL(root) : root;
       const output = `${outputRoot}${separator}${marker}${payload}`;
       const outputLength = Array.from(outputRoot).length + 1 + Array.from(marker).length +
         countSymbols(payload, alphabet.alphabet);

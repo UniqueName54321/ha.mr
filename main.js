@@ -84,7 +84,9 @@ const queryWarningElement = document.querySelector("#query-warning");
 const previewPayloadElement = document.querySelector("#preview-payload");
 const previewLinkElement = document.querySelector("#preview-link");
 const rootURLInputElement = document.querySelector("#settings-root-url");
-rootURLInputElement.value = window.location.origin;
+// Resolve from this module rather than the page origin so GitHub Pages project
+// sites retain their repository path (for example /ha.mr).
+rootURLInputElement.value = new URL(".", import.meta.url).href.replace(/\/$/, "");
 rootURLInputElement.addEventListener("input", updateOutput);
 
 function getRootURL () {
@@ -103,6 +105,14 @@ function getRootURL () {
   root.search = "";
   root.hash = "";
   return root.href.replace(/\/$/, "");
+}
+
+function getQRRootURL (rootURL) {
+  const root = new URL(rootURL);
+  const pathname = Array.from(root.pathname, character => /[a-z]/.test(character)
+    ? `%${character.codePointAt(0).toString(16).toUpperCase()}`
+    : character).join("");
+  return `${root.protocol.toUpperCase()}//${root.host.toUpperCase()}${pathname}`.replace(/\/$/, "");
 }
 
 const qrCodeImage = document.querySelector("#qrcode");
@@ -368,7 +378,7 @@ function updateOutput () {
         }[qrAlgorithm](input, outputAlphabetQR);
       }
       const qrPayload = getAlgorithmMarker(qrAlgorithm, true) + qrOutput;
-      let qrCodeLink = `${rootURL.toUpperCase()}/${qrPayload}`;
+      let qrCodeLink = `${getQRRootURL(rootURL)}/${qrPayload}`;
       QRCode.toDataURL(qrCodeLink, {
         errorCorrectionLevel: errorCorrection,
         scale: 8
