@@ -96,9 +96,34 @@ function numberToString (number, alphabet) {
  * @param {string[]} alphabet Ordered list of possible character sequences in `string`
  * @returns {BigInt} Decoded number
  */
+const singleCharacterAlphabetIndexes = new WeakMap();
+
 function stringToNumber (string, alphabet) {
   const alphabetSize = BigInt(alphabet.length);
   let number = 0n;
+
+  // Large single-code-point alphabets (notably the all-Unicode mode) need a
+  // direct lookup. Scanning the complete alphabet for every digit would make
+  // decoding unnecessarily quadratic.
+  let indexes = singleCharacterAlphabetIndexes.get(alphabet);
+  if (indexes === undefined) {
+    indexes = alphabet.every(character => Array.from(character).length === 1)
+      ? new Map(alphabet.map((character, index) => [character, index]))
+      : null;
+    singleCharacterAlphabetIndexes.set(alphabet, indexes);
+  }
+
+  if (indexes) {
+    const characters = Array.from(string);
+    while (characters.length) {
+      const character = characters.pop();
+      const index = indexes.get(character);
+      if (index === undefined) throw `Invalid character: "${character}"`;
+      number *= alphabetSize;
+      number += BigInt(index) + 1n;
+    }
+    return number;
+  }
 
   // Not all alphabets are 1 byte per character. For example, the emoji
   // alphabet includes some sequences that only make sense in specific

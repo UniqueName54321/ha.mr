@@ -83,10 +83,38 @@
     #output-link-container {
       margin: 10px 0 0 0;
       text-align: center;
+      width: min(760px, 90vw);
+    }
+    #output-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 8px 8px 14px;
+      border: 1px solid rgba(70, 90, 130, 0.22);
+      border-radius: 14px;
+      background: linear-gradient(135deg, #f8fbff, #edf2ff);
+      box-shadow: 0 8px 24px rgba(38, 60, 110, 0.14);
     }
     #output-link {
+      flex: 1;
+      min-width: 0;
       color: rgb(50, 100, 255);
       word-break: break-all;
+      max-height: 7.5em;
+      overflow: auto;
+      text-align: left;
+    }
+    #copy-output {
+      border: 0;
+      border-radius: 10px;
+      padding: 9px 14px;
+      color: white;
+      background: #3264ff;
+      cursor: pointer;
+      box-shadow: 0 3px 9px rgba(50, 100, 255, 0.3);
+    }
+    #copy-output:hover {
+      background: #214fe0;
     }
     #output-ratio {
       transition: color 0.5s;
@@ -139,7 +167,10 @@
       removed, making the link much shorter.
     </details>
     <p id="output-link-container">
-      <a id="output-link" target="_blank">Enter a link above to compress</a>
+      <span id="output-box">
+        <a id="output-link" target="_blank">Enter a link above to compress</a>
+        <button type="button" id="copy-output" aria-label="Copy compressed URL">Copy</button>
+      </span>
       <br><span id="output-ratio">&nbsp;</span>
     </p>
 
@@ -153,7 +184,11 @@
 
     <span style="margin-top:20px">
       <input type="checkbox" id="settings-emoji" name="settings-emoji" autocomplete="off">
-      <label for="settings-emoji"> Use emoji in text output</label><br>
+      <label for="settings-emoji"> Use emoji in text output (Base3953)</label><br>
+    </span>
+    <span>
+      <input type="checkbox" id="settings-unicode" name="settings-unicode" autocomplete="off">
+      <label for="settings-unicode"> Use every printable Unicode character, including emoji (Base159629)</label><br>
     </span>
     <span>
       <input type="checkbox" id="settings-qr" name="settings-qr" autocomplete="off">

@@ -8,6 +8,9 @@ Compresses links and optimizes QR codes entirely in the browser, without a back-
 4. For links, the output is encoded in the full character set of a URL. (I've been informed that square brackets `[]` are not supposed to be a part of this set, but it's too late to change that now.)
 5. For QR codes, the output uses the alphanumeric character set to remove overhead compared to other QR code generators.
 
+Text output can also use a Base3953 emoji alphabet or an experimental
+Base159629 alphabet containing every assigned printable Unicode code point.
+
 ## Acknowledgements
 - https://www.npmjs.com/package/qrcode
 - https://github.com/smythp/reddit_links_dataset

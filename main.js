@@ -2,16 +2,19 @@ import { compress, decompress } from "./compress.js";
 import {
   outputAlphabetASCII,
   outputAlphabetQR,
-  outputAlphabetEmoji
+  outputAlphabetEmoji,
+  outputAlphabetUnicode
 } from "./alphabets.js";
 
 var settings = {
   emoji: false,
+  unicode: false,
   qr: false
 };
 
 const settingsElements = {
   emoji: "#settings-emoji",
+  unicode: "#settings-unicode",
   qr: "#settings-qr"
 };
 
@@ -20,6 +23,11 @@ for (const setting in settingsElements) {
   settings[setting] = element.checked;
   element.addEventListener("change", (event) => {
     settings[setting] = element.checked;
+    if (element.checked && (setting === "emoji" || setting === "unicode")) {
+      const otherSetting = setting === "emoji" ? "unicode" : "emoji";
+      settings[otherSetting] = false;
+      document.querySelector(settingsElements[otherSetting]).checked = false;
+    }
     updateOutput();
   });
 }
@@ -36,6 +44,7 @@ function countSymbols (string, alphabet) {
 
 const inputLinkElement = document.querySelector("#input-link");
 const outputLinkElement = document.querySelector("#output-link");
+const copyOutputElement = document.querySelector("#copy-output");
 const outputRatioElement = document.querySelector("#output-ratio");
 const queryWarningElement = document.querySelector("#query-warning");
 
@@ -47,8 +56,11 @@ qrCodeCorrectionLevelElement.addEventListener("change", updateOutput);
 function updateOutput () {
   const input = inputLinkElement.value.trim();
   try {
-    const alphabet = settings.emoji ? outputAlphabetEmoji : outputAlphabetASCII;
+    const alphabet = settings.unicode
+      ? outputAlphabetUnicode
+      : settings.emoji ? outputAlphabetEmoji : outputAlphabetASCII;
     const output = compress(input, alphabet);
+    const modePrefix = settings.unicode ? "u:" : "";
     let inputNormalized = input;
     if (input.startsWith("https://")) {
       inputNormalized = input.slice(8);
@@ -67,7 +79,8 @@ function updateOutput () {
     } else {
       queryWarningElement.style.display = "none";
     }
-    const ratio = (1 - (countSymbols(output, alphabet) + 6) / inputNormalized.length) * 100;
+    const symbolCount = settings.unicode ? Array.from(output).length : countSymbols(output, alphabet);
+    const ratio = (1 - (symbolCount + modePrefix.length + 6) / inputNormalized.length) * 100;
     if (ratio < -300) {
       outputRatioElement.textContent = `Output is much larger than the input`;
       outputRatioElement.style.color = "rgb(255, 50, 50)";
@@ -81,8 +94,9 @@ function updateOutput () {
       outputRatioElement.textContent = "Output is the same length as the input";
       outputRatioElement.style.color = "gray";
     }
-    outputLinkElement.textContent = `http://shrt.beep8.xyz#${output}`;
-    outputLinkElement.href = `http://shrt.beep8.xyz#${output}`;
+    const outputURL = `http://shrt.beep8.xyz#${modePrefix}${output}`;
+    outputLinkElement.textContent = outputURL;
+    outputLinkElement.href = outputURL;
     outputLinkElement.style.color = "";
     if (settings.qr) {
       const errorCorrection = ["L", "M", "Q", "H"][qrCodeCorrectionLevelElement.value];
@@ -121,6 +135,23 @@ function updateOutput () {
   }
 }
 inputLinkElement.addEventListener("input", updateOutput);
+copyOutputElement.addEventListener("click", async () => {
+  if (!outputLinkElement.href) return;
+  const value = outputLinkElement.textContent;
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch {
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(outputLinkElement);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.execCommand("copy");
+    selection.removeAllRanges();
+  }
+  copyOutputElement.textContent = "Copied!";
+  window.setTimeout(() => { copyOutputElement.textContent = "Copy"; }, 1400);
+});
 
 (() => {
   let payload = null;
@@ -129,12 +160,24 @@ inputLinkElement.addEventListener("input", updateOutput);
   // Get hash value of current address bar
   if (window.location.hash) {
     // Decode hash value in case it's non-ASCII
-    payload = decodeURIComponent(window.location.hash.slice(1));
-    // Remove all whitespace - we never use whitespace when encoding hash values
-    payload = payload.replaceAll(" ", "");
-    // Check if input is pure ASCII - potentially unreliable?
-    const useEmoji = Array.from(payload).some(c => !outputAlphabetASCII.includes(c));
-    alphabet = useEmoji ? outputAlphabetEmoji : outputAlphabetASCII;
+    const fragment = window.location.hash.slice(1);
+    try {
+      payload = decodeURIComponent(fragment);
+    } catch {
+      // A raw percent sign is a valid digit in the Unicode alphabet.
+      payload = fragment;
+    }
+    if (payload.startsWith("u:")) {
+      payload = payload.slice(2);
+      alphabet = outputAlphabetUnicode;
+    }
+    if (alphabet !== outputAlphabetUnicode) {
+      // Legacy alphabets never use spaces and older links may contain them.
+      payload = payload.replaceAll(" ", "");
+      // Legacy links have no mode marker, so retain their original detection.
+      const useEmoji = Array.from(payload).some(c => !outputAlphabetASCII.includes(c));
+      alphabet = useEmoji ? outputAlphabetEmoji : outputAlphabetASCII;
+    }
   } else {
     // If no hash value, we're likely reading a QR code
     // For that, use the path instead
