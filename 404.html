@@ -229,12 +229,32 @@
       <label for="settings-unicode"> Use every printable Unicode character, including emoji (Base159629)</label><br>
     </span>
     <span>
+      <input type="checkbox" id="settings-xkcd1105" name="settings-xkcd1105" autocomplete="off">
+      <label for="settings-xkcd1105"> Use xkcd1105 alphabet (Base2: I and 1)</label><br>
+    </span>
+    <span>
       <input type="checkbox" id="settings-bwt" name="settings-bwt" autocomplete="off">
       <label for="settings-bwt"> Apply Burrows–Wheeler transform before compression</label><br>
     </span>
     <span>
       <input type="checkbox" id="settings-bzip2" name="settings-bzip2" autocomplete="off">
       <label for="settings-bzip2"> Use URL-safe bzip2 compression</label><br>
+    </span>
+    <span>
+      <input type="checkbox" id="settings-rune" name="settings-rune" autocomplete="off">
+      <label for="settings-rune"> Use RUNE recursive URL compression</label><br>
+    </span>
+    <span>
+      <input type="checkbox" id="settings-rune2" name="settings-rune2" autocomplete="off">
+      <label for="settings-rune2"> Use RUNE-II structural dictionary compression</label><br>
+    </span>
+    <span>
+      <input type="checkbox" id="settings-enur" name="settings-enur" autocomplete="off">
+      <label for="settings-enur"> Use ENUR ceremonial URL expansion</label><br>
+    </span>
+    <span>
+      <input type="checkbox" id="settings-auto" name="settings-auto" autocomplete="off">
+      <label for="settings-auto"> Auto-select the shortest compression algorithm</label><br>
     </span>
     <span>
       <input type="checkbox" id="settings-payload-only" name="settings-payload-only" autocomplete="off">
@@ -252,6 +272,6 @@
 
   </div>
 
-  <script type="module" src="/main.js"></script>
+  <script type="module" src="/main.js?v=20260814-xkcd1105"></script>
 </body>
 </html>

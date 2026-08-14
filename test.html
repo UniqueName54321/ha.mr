@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ha.mr encoding matrix test</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Hammersmith+One&display=swap');
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 32px 18px;
+      color: #17213b;
+      background: linear-gradient(145deg, #f7f9ff, #e9efff);
+      font-family: "Hammersmith One", sans-serif;
+    }
+    main {
+      width: min(1100px, 100%);
+      margin: auto;
+    }
+    h1 { margin: 0 0 6px; }
+    .subtitle { margin: 0 0 24px; color: #65708b; }
+    .panel {
+      margin-bottom: 16px;
+      padding: 18px;
+      border: 1px solid rgba(60, 80, 130, 0.16);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 10px 28px rgba(38, 60, 110, 0.1);
+    }
+    .fields {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 12px;
+    }
+    label { display: block; font-size: 0.9rem; }
+    input[type="url"], input[type="text"], textarea {
+      width: 100%;
+      margin-top: 5px;
+      padding: 10px 12px;
+      border: 1px solid #cbd3e5;
+      border-radius: 10px;
+      background: white;
+      font: 15px sans-serif;
+    }
+    .matrix {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 9px;
+      margin-top: 12px;
+    }
+    .encoding-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 7px;
+      min-height: 58px;
+      padding: 10px;
+      border: 1px solid #d8deed;
+      border-radius: 10px;
+      background: #f9faff;
+      cursor: pointer;
+    }
+    .encoding-option:hover { border-color: #8099e8; }
+    .encoding-option small { display: block; color: #717b92; }
+    .controls {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    button {
+      padding: 8px 12px;
+      border: 0;
+      border-radius: 9px;
+      color: white;
+      background: #3264ff;
+      cursor: pointer;
+    }
+    button.secondary { color: #31405f; background: #e8edfa; }
+    textarea {
+      min-height: 190px;
+      resize: vertical;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+    #test-url { min-height: 110px; }
+    #status { min-height: 1.3em; margin: 8px 0 0; color: #69738b; }
+    #status.error { color: #df3030; }
+    @media (max-width: 760px) {
+      .fields, .matrix { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>ha.mr encoding matrix</h1>
+    <p class="subtitle">Compare one URL against every selected compression and output-alphabet combination.</p>
+
+    <section class="panel fields">
+      <label>
+        URLs to test (one per line)
+        <textarea id="test-url" autofocus>https://www.example.com/a/long/path?hello=world</textarea>
+      </label>
+      <label>
+        Root URL
+        <input type="url" id="root-url">
+      </label>
+    </section>
+
+    <section class="panel">
+      <strong>Encoding types</strong>
+      <div id="encoding-matrix" class="matrix"></div>
+      <div class="controls">
+        <button type="button" id="select-all" class="secondary">Select all</button>
+        <button type="button" id="select-none" class="secondary">Select none</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <label for="results"><strong>Result</strong></label>
+      <textarea id="results" readonly></textarea>
+      <div class="controls">
+        <button type="button" id="copy-results">Copy result</button>
+      </div>
+      <p id="status"></p>
+    </section>
+  </main>
+
+  <script type="module">
+    import {
+      compress,
+      compressBWT,
+      compressBzip2,
+      compressRUNE,
+      compressRUNEII,
+      compressENUR,
+      selectBestCompression
+    } from "./compress.js?v=20260814-xkcd1105";
+    import {
+      outputAlphabetASCII,
+      outputAlphabetEmoji,
+      outputAlphabetUnicode,
+      outputAlphabetQR,
+      outputAlphabetXKCD1105
+    } from "./alphabets.js?v=20260814-xkcd1105";
+
+    const testURLElement = document.querySelector("#test-url");
+    const rootURLElement = document.querySelector("#root-url");
+    const matrixElement = document.querySelector("#encoding-matrix");
+    const resultsElement = document.querySelector("#results");
+    const statusElement = document.querySelector("#status");
+    rootURLElement.value = window.location.origin;
+
+    const alphabets = [
+      { id: "ascii", name: "Base84", description: "URL-safe text", alphabet: outputAlphabetASCII },
+      { id: "emoji", name: "Base3953", description: "emoji output", alphabet: outputAlphabetEmoji },
+      { id: "unicode", name: "Base159629", description: "all printable Unicode", alphabet: outputAlphabetUnicode },
+      { id: "qr", name: "Base43", description: "QR alphanumeric", alphabet: outputAlphabetQR },
+      { id: "xkcd1105", name: "Base2", description: "xkcd1105: I and 1", alphabet: outputAlphabetXKCD1105 }
+    ];
+    const algorithms = [
+      { id: "normal", name: "Normal", description: "semantic URL compression", compress },
+      { id: "bwt", name: "BWT", description: "BWT + run-length encoding", compress: compressBWT },
+      { id: "bzip2", name: "bzip2", description: "BWT + MTF + RLE + Huffman", compress: compressBzip2 },
+      { id: "rune", name: "RUNE", description: "recursive nested-URL number packing", compress: compressRUNE },
+      { id: "rune2", name: "RUNE-II", description: "recursive packing + structural URL dictionary", compress: compressRUNEII },
+      { id: "enur", name: "ENUR", description: "8× ceremonial byte expansion", compress: compressENUR },
+      { id: "auto", name: "Auto", description: "shortest valid algorithm", compress: null }
+    ];
+    const encodings = algorithms.flatMap(algorithm => alphabets.map(alphabet => ({ algorithm, alphabet })));
+
+    for (const encoding of encodings) {
+      const id = `${encoding.algorithm.id}-${encoding.alphabet.id}`;
+      const label = document.createElement("label");
+      label.className = "encoding-option";
+      label.innerHTML = `
+        <input type="checkbox" value="${id}" checked>
+        <span>${encoding.algorithm.name} / ${encoding.alphabet.name}
+          <small>${encoding.alphabet.description}</small>
+        </span>`;
+      matrixElement.append(label);
+    }
+
+    function countSymbols (value, alphabet) {
+      if (alphabet === outputAlphabetUnicode || alphabet === outputAlphabetASCII || alphabet === outputAlphabetQR) {
+        return Array.from(value).length;
+      }
+      let count = 0;
+      while (value) {
+        const symbol = alphabet.find(character => value.endsWith(character));
+        if (!symbol) throw new Error("Output contains a symbol outside its alphabet.");
+        value = value.slice(0, -symbol.length);
+        count ++;
+      }
+      return count;
+    }
+
+    function getRootURL () {
+      const root = new URL(rootURLElement.value.trim());
+      if (root.protocol !== "http:" && root.protocol !== "https:") throw new Error("Root URL must use HTTP or HTTPS.");
+      root.search = "";
+      root.hash = "";
+      return root.href.replace(/\/$/, "");
+    }
+
+    function formatEncoding (source, root, encoding) {
+      const { algorithm, alphabet } = encoding;
+      let effectiveAlgorithm = algorithm;
+      let payload;
+      if (algorithm.id === "auto") {
+        const best = selectBestCompression(source, alphabet.alphabet);
+        effectiveAlgorithm = algorithms.find(candidate => candidate.id === best.algorithm);
+        payload = best.payload;
+      } else {
+        payload = algorithm.compress(source, alphabet.alphabet);
+      }
+      let marker = "";
+      if (alphabet.id === "xkcd1105") {
+        if (effectiveAlgorithm.id === "normal") marker = "x:";
+        if (effectiveAlgorithm.id === "bwt") marker = "xb:";
+        if (effectiveAlgorithm.id === "bzip2") marker = "xz:";
+        if (effectiveAlgorithm.id === "rune") marker = "xr:";
+        if (effectiveAlgorithm.id === "rune2") marker = "xr2:";
+        if (effectiveAlgorithm.id === "enur") marker = "xe:";
+      } else if (alphabet.id === "qr") {
+        if (effectiveAlgorithm.id === "bwt") marker = "B:";
+        if (effectiveAlgorithm.id === "bzip2") marker = "Z:";
+        if (effectiveAlgorithm.id === "rune") marker = "R:";
+        if (effectiveAlgorithm.id === "rune2") marker = "R2:";
+        if (effectiveAlgorithm.id === "enur") marker = "E:";
+      } else {
+        if (effectiveAlgorithm.id === "normal" && alphabet.id === "unicode") marker = "u:";
+        if (effectiveAlgorithm.id === "bwt") marker = alphabet.id === "unicode" ? "bu:" : "b:";
+        if (effectiveAlgorithm.id === "bzip2") marker = alphabet.id === "unicode" ? "zu:" : "z:";
+        if (effectiveAlgorithm.id === "rune") marker = alphabet.id === "unicode" ? "ru:" : "r:";
+        if (effectiveAlgorithm.id === "rune2") marker = alphabet.id === "unicode" ? "r2u:" : "r2:";
+        if (effectiveAlgorithm.id === "enur") marker = alphabet.id === "unicode" ? "eu:" : "e:";
+      }
+      const separator = alphabet.id === "qr" ? "/" : "#";
+      const outputRoot = alphabet.id === "qr" ? root.toUpperCase() : root;
+      const output = `${outputRoot}${separator}${marker}${payload}`;
+      const outputLength = Array.from(outputRoot).length + 1 + Array.from(marker).length +
+        countSymbols(payload, alphabet.alphabet);
+      const inputLength = Array.from(source).length;
+      const difference = (outputLength / inputLength - 1) * 100;
+      const direction = difference <= 0 ? "smaller" : "larger";
+      const percent = Math.abs(difference).toFixed(1).replace(/\.0$/, "");
+      const comparison = `${percent}% ${direction}`;
+      const algorithmDescription = algorithm.id === "auto"
+        ? `auto → ${effectiveAlgorithm.name} (${effectiveAlgorithm.description})`
+        : algorithm.description;
+      const description = `${algorithmDescription}; ${alphabet.name} ${alphabet.description}`;
+      return `${output} (${comparison}, ${description})`;
+    }
+
+    function updateResults () {
+      statusElement.className = "";
+      try {
+        const sources = testURLElement.value.split(/\r?\n/)
+          .map(source => source.trim())
+          .filter(Boolean);
+        if (!sources.length) throw new Error("Enter at least one URL to test.");
+        const root = getRootURL();
+        const selected = new Set(Array.from(matrixElement.querySelectorAll("input:checked"), input => input.value));
+        const selectedEncodings = encodings
+          .filter(({ algorithm, alphabet }) => selected.has(`${algorithm.id}-${alphabet.id}`));
+        const tests = sources.map((source, index) => {
+          // Validate through the same URL rules used by the compressor.
+          if (!URL.canParse(source) && !URL.canParse(`http://${source}`)) {
+            throw new Error(`TEST ${index + 1} is not a valid URL.`);
+          }
+          const outputs = selectedEncodings.map(encoding => formatEncoding(source, root, encoding));
+          return `TEST ${index + 1}: ${source} -> ${outputs.join(" / ")}`;
+        });
+        resultsElement.value = tests.join("\n");
+        statusElement.textContent = `${tests.length} test${tests.length === 1 ? "" : "s"}; ` +
+          `${selectedEncodings.length} encoding type${selectedEncodings.length === 1 ? "" : "s"} each.`;
+      } catch (error) {
+        resultsElement.value = "";
+        statusElement.textContent = error.message;
+        statusElement.className = "error";
+      }
+    }
+
+    for (const element of [testURLElement, rootURLElement, matrixElement]) {
+      element.addEventListener("input", updateResults);
+      element.addEventListener("change", updateResults);
+    }
+    document.querySelector("#select-all").addEventListener("click", () => {
+      matrixElement.querySelectorAll("input").forEach(input => { input.checked = true; });
+      updateResults();
+    });
+    document.querySelector("#select-none").addEventListener("click", () => {
+      matrixElement.querySelectorAll("input").forEach(input => { input.checked = false; });
+      updateResults();
+    });
+    document.querySelector("#copy-results").addEventListener("click", async event => {
+      await navigator.clipboard.writeText(resultsElement.value);
+      event.currentTarget.textContent = "Copied!";
+      setTimeout(() => { event.currentTarget.textContent = "Copy result"; }, 1400);
+    });
+
+    updateResults();
+  </script>
+</body>
+</html>

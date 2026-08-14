@@ -385,6 +385,244 @@ export function decompressBzip2 (input, alphabet) {
   return new TextDecoder("utf-8", { fatal: true }).decode(bwtInverse(transformed, index));
 }
 
+const RECURSIVE_URL_PLACEHOLDER = "__HAMR_NESTED_URL__";
+
+/**
+ * RUNE (Recursive URL Number Encoding) treats the longest URL-valued query
+ * parameter as a second semantic URL stream. The two arbitrary-precision
+ * streams are packed together directly, avoiding byte containers and their
+ * metadata overhead.
+ */
+export function compressRUNE (input, alphabet) {
+  const url = URL.canParse(input) ? new URL(input) : new URL("http://" + input);
+  const nestedCandidates = Array.from(url.searchParams.entries())
+    .filter(([, value]) => URL.canParse(value))
+    .sort((a, b) => b[1].length - a[1].length);
+  if (!nestedCandidates.length) {
+    const normal = stringToNumber(compress(input, alphabet), alphabet);
+    return numberToString(normal << 16n, alphabet);
+  }
+
+  const [parameter, nestedURL] = nestedCandidates[0];
+  url.searchParams.set(parameter, RECURSIVE_URL_PLACEHOLDER);
+  const outerPayload = compress(url.href, alphabet);
+  const nestedPayload = compress(nestedURL, alphabet);
+  const outerLength = countAlphabetSymbols(outerPayload, alphabet);
+  if (outerLength > 65535) throw new Error("RUNE outer stream is too large.");
+
+  const base = BigInt(alphabet.length);
+  let outerLimit = 1n;
+  let power = 1n;
+  for (let i = 0; i < outerLength; i ++) {
+    power *= base;
+    outerLimit += power;
+  }
+  const combined = stringToNumber(outerPayload, alphabet) +
+    stringToNumber(nestedPayload, alphabet) * outerLimit;
+  return numberToString((combined << 16n) + BigInt(outerLength), alphabet);
+}
+
+export function decompressRUNE (input, alphabet) {
+  let combined = stringToNumber(input, alphabet);
+  const outerLength = Number(combined & 0xFFFFn);
+  combined >>= 16n;
+  if (!outerLength) return decompress(numberToString(combined, alphabet), alphabet);
+
+  const base = BigInt(alphabet.length);
+  let outerLimit = 1n;
+  let power = 1n;
+  for (let i = 0; i < outerLength; i ++) {
+    power *= base;
+    outerLimit += power;
+  }
+  const outerPayload = numberToString(combined % outerLimit, alphabet);
+  const nestedPayload = numberToString(combined / outerLimit, alphabet);
+  const outerURL = decompress(outerPayload, alphabet);
+  const nestedURL = decompress(nestedPayload, alphabet);
+  if (!outerURL.includes(RECURSIVE_URL_PLACEHOLDER)) throw new Error("Invalid RUNE placeholder.");
+  return outerURL.replace(RECURSIVE_URL_PLACEHOLDER, encodeURIComponent(nestedURL));
+}
+
+function countAlphabetSymbols (input, alphabet) {
+  if (alphabet.length > 100000) return Array.from(input).length;
+  let count = 0;
+  while (input) {
+    const symbol = alphabet.find(character => input.endsWith(character));
+    if (!symbol) throw new Error("Invalid alphabet symbol.");
+    input = input.slice(0, -symbol.length);
+    count ++;
+  }
+  return count;
+}
+
+export function selectBestCompression (input, alphabet) {
+  const algorithms = [
+    ["normal", compress],
+    ["bwt", compressBWT],
+    ["bzip2", compressBzip2],
+    ["rune", compressRUNE],
+    ["rune2", compressRUNEII],
+    ["enur", compressENUR]
+  ];
+  const isXKCD1105 = alphabet.length === 2 && alphabet[0] === "I" && alphabet[1] === "1";
+  const isUnicode = alphabet.length > 100000;
+  const isQR = alphabet.length === 43;
+  const markerLength = algorithm => {
+    if (algorithm === "normal") return isXKCD1105 || isUnicode ? 2 : 0;
+    if (algorithm === "rune2") return isXKCD1105 || isUnicode || isQR ? 4 - (isQR ? 1 : 0) : 3;
+    return isXKCD1105 || isUnicode ? 3 : 2;
+  };
+  const results = [];
+  for (const [algorithm, encode] of algorithms) {
+    try {
+      const payload = encode(input, alphabet);
+      results.push({
+        algorithm,
+        payload,
+        symbols: countAlphabetSymbols(payload, alphabet) + markerLength(algorithm)
+      });
+    } catch {
+      // Some specialized codecs have input limits; they simply cannot win.
+    }
+  }
+  if (!results.length) throw new Error("No compression algorithm accepted this URL.");
+  results.sort((a, b) => a.symbols - b.symbols);
+  return results[0];
+}
+
+const RUNE_II_KEY_TOKENS = [
+  "redir", "tl_clickthrough", "adroll_ad_payload", "adroll_network",
+  "adroll_subnetwork", "utm_source", "utm_medium", "utm_campaign",
+  "utm_content", "utm_term", "redirect", "redirect_url", "clickthrough",
+  "auction_price", "cpm", "brid", "bmid", "biid", "bcud", "aid", "sid",
+  "ts", "cb", "ss", "bc", "pr"
+];
+const RUNE_II_VALUE_TOKENS = [
+  "true", "false", "triplelift", "${TL_AUCTION_PRICE}", "${AUCTION_PRICE}"
+];
+
+function runeIIToken (value, tokens) {
+  const index = tokens.indexOf(value);
+  if (index >= 0) return `_${index.toString(36)}`;
+  return value.startsWith("_") ? "_" + value : value;
+}
+
+function runeIIUntoken (value, tokens) {
+  if (value.startsWith("__")) return value.slice(1);
+  if (/^_[0-9a-z]$/.test(value)) {
+    const token = tokens[parseInt(value.slice(1), 36)];
+    if (token !== undefined) return token;
+  }
+  return value;
+}
+
+function runeIITokenizeURL (input) {
+  const url = new URL(input);
+  const parameters = new URLSearchParams();
+  for (const [key, value] of url.searchParams) {
+    parameters.append(runeIIToken(key, RUNE_II_KEY_TOKENS), runeIIToken(value, RUNE_II_VALUE_TOKENS));
+  }
+  url.search = parameters.toString();
+  return url.href;
+}
+
+function runeIIUntokenizeURL (input) {
+  const url = new URL(input);
+  const parameters = new URLSearchParams();
+  for (const [key, value] of url.searchParams) {
+    parameters.append(runeIIUntoken(key, RUNE_II_KEY_TOKENS), runeIIUntoken(value, RUNE_II_VALUE_TOKENS));
+  }
+  url.search = parameters.toString();
+  return url.href;
+}
+
+export function compressRUNEII (input, alphabet) {
+  const source = URL.canParse(input) ? new URL(input) : new URL("http://" + input);
+  const nestedCandidates = Array.from(source.searchParams.entries())
+    .filter(([, value]) => URL.canParse(value))
+    .sort((a, b) => b[1].length - a[1].length);
+  if (!nestedCandidates.length) {
+    const tokenized = runeIITokenizeURL(source.href);
+    return numberToString(stringToNumber(compress(tokenized, alphabet), alphabet) << 16n, alphabet);
+  }
+
+  const [parameter, nestedURL] = nestedCandidates[0];
+  source.searchParams.set(parameter, RECURSIVE_URL_PLACEHOLDER);
+  const outerPayload = compress(runeIITokenizeURL(source.href), alphabet);
+  const nestedPayload = compress(runeIITokenizeURL(nestedURL), alphabet);
+  const outerLength = countAlphabetSymbols(outerPayload, alphabet);
+  if (outerLength > 65535) throw new Error("RUNE-II outer stream is too large.");
+  const base = BigInt(alphabet.length);
+  let outerLimit = 1n;
+  let power = 1n;
+  for (let i = 0; i < outerLength; i ++) {
+    power *= base;
+    outerLimit += power;
+  }
+  const combined = stringToNumber(outerPayload, alphabet) +
+    stringToNumber(nestedPayload, alphabet) * outerLimit;
+  return numberToString((combined << 16n) + BigInt(outerLength), alphabet);
+}
+
+export function decompressRUNEII (input, alphabet) {
+  let combined = stringToNumber(input, alphabet);
+  const outerLength = Number(combined & 0xFFFFn);
+  combined >>= 16n;
+  if (!outerLength) {
+    return runeIIUntokenizeURL(decompress(numberToString(combined, alphabet), alphabet));
+  }
+  const base = BigInt(alphabet.length);
+  let outerLimit = 1n;
+  let power = 1n;
+  for (let i = 0; i < outerLength; i ++) {
+    power *= base;
+    outerLimit += power;
+  }
+  const outerURL = runeIIUntokenizeURL(decompress(numberToString(combined % outerLimit, alphabet), alphabet));
+  const nestedURL = runeIIUntokenizeURL(decompress(numberToString(combined / outerLimit, alphabet), alphabet));
+  if (!outerURL.includes(RECURSIVE_URL_PLACEHOLDER)) throw new Error("Invalid RUNE-II placeholder.");
+  return outerURL.replace(RECURSIVE_URL_PLACEHOLDER, encodeURIComponent(nestedURL));
+}
+
+/**
+ * ENUR is intentionally the opposite of RUNE. Each canonical URL byte is
+ * expanded into an eight-byte redundant block: four copies of the byte
+ * interleaved with four copies of its bitwise complement. The redundancy is
+ * pointless by design, but makes corruption detectable and expansion heroic.
+ */
+export function compressENUR (input, alphabet) {
+  const canonical = decompress(compress(input, alphabet), alphabet);
+  const bytes = new TextEncoder().encode(canonical);
+  const expanded = new Uint8Array(bytes.length * 8);
+  for (let i = 0; i < bytes.length; i ++) {
+    const byte = bytes[i];
+    for (let copy = 0; copy < 4; copy ++) {
+      expanded[i * 8 + copy * 2] = byte;
+      expanded[i * 8 + copy * 2 + 1] = byte ^ 0xFF;
+    }
+  }
+  return byteStreamToString(bytes.length, expanded, alphabet);
+}
+
+export function decompressENUR (input, alphabet) {
+  const { index: expectedLength, bytes: expanded } = stringToByteStream(input, alphabet);
+  if (expectedLength < 0 || expanded.length !== expectedLength * 8) {
+    throw new Error("Invalid ENUR expansion length.");
+  }
+  const bytes = new Uint8Array(expectedLength);
+  for (let i = 0; i < expectedLength; i ++) {
+    const byte = expanded[i * 8];
+    for (let copy = 0; copy < 4; copy ++) {
+      if (expanded[i * 8 + copy * 2] !== byte ||
+          expanded[i * 8 + copy * 2 + 1] !== (byte ^ 0xFF)) {
+        throw new Error("Invalid ENUR ceremonial block.");
+      }
+    }
+    bytes[i] = byte;
+  }
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+}
+
 /**
  * Encodes a binary sequence from a string into the number/data stream.
  * @param {BigInt} number Data stream to encode to

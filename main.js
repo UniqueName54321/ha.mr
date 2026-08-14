@@ -1,20 +1,30 @@
 import {
   compress, decompress,
   compressBWT, decompressBWT,
-  compressBzip2, decompressBzip2
-} from "./compress.js";
+  compressBzip2, decompressBzip2,
+  compressRUNE, decompressRUNE,
+  compressRUNEII, decompressRUNEII,
+  compressENUR, decompressENUR,
+  selectBestCompression
+} from "./compress.js?v=20260814-xkcd1105";
 import {
   outputAlphabetASCII,
   outputAlphabetQR,
   outputAlphabetEmoji,
-  outputAlphabetUnicode
-} from "./alphabets.js";
+  outputAlphabetUnicode,
+  outputAlphabetXKCD1105
+} from "./alphabets.js?v=20260814-xkcd1105";
 
 var settings = {
   emoji: false,
   unicode: false,
+  xkcd1105: false,
   bwt: false,
   bzip2: false,
+  rune: false,
+  rune2: false,
+  enur: false,
+  auto: false,
   payloadOnly: false,
   qr: false
 };
@@ -22,8 +32,13 @@ var settings = {
 const settingsElements = {
   emoji: "#settings-emoji",
   unicode: "#settings-unicode",
+  xkcd1105: "#settings-xkcd1105",
   bwt: "#settings-bwt",
   bzip2: "#settings-bzip2",
+  rune: "#settings-rune",
+  rune2: "#settings-rune2",
+  enur: "#settings-enur",
+  auto: "#settings-auto",
   payloadOnly: "#settings-payload-only",
   qr: "#settings-qr"
 };
@@ -33,15 +48,19 @@ for (const setting in settingsElements) {
   settings[setting] = element.checked;
   element.addEventListener("change", (event) => {
     settings[setting] = element.checked;
-    if (element.checked && (setting === "emoji" || setting === "unicode")) {
-      const otherSetting = setting === "emoji" ? "unicode" : "emoji";
-      settings[otherSetting] = false;
-      document.querySelector(settingsElements[otherSetting]).checked = false;
+    if (element.checked && ["emoji", "unicode", "xkcd1105"].includes(setting)) {
+      for (const otherSetting of ["emoji", "unicode", "xkcd1105"]) {
+        if (otherSetting === setting) continue;
+        settings[otherSetting] = false;
+        document.querySelector(settingsElements[otherSetting]).checked = false;
+      }
     }
-    if (element.checked && (setting === "bwt" || setting === "bzip2")) {
-      const otherSetting = setting === "bwt" ? "bzip2" : "bwt";
-      settings[otherSetting] = false;
-      document.querySelector(settingsElements[otherSetting]).checked = false;
+    if (element.checked && ["bwt", "bzip2", "rune", "rune2", "enur", "auto"].includes(setting)) {
+      for (const otherSetting of ["bwt", "bzip2", "rune", "rune2", "enur", "auto"]) {
+        if (otherSetting === setting) continue;
+        settings[otherSetting] = false;
+        document.querySelector(settingsElements[otherSetting]).checked = false;
+      }
     }
     updateOutput();
   });
@@ -106,7 +125,45 @@ function updatePreview () {
     let alphabet = outputAlphabetASCII;
     let useBWT = false;
     let useBzip2 = false;
-    if (payload.startsWith("Z:")) {
+    let useRUNE = false;
+    let useRUNEII = false;
+    let useENUR = false;
+    if (payload.startsWith("xr2:")) {
+      payload = payload.slice(4);
+      alphabet = outputAlphabetXKCD1105;
+      useRUNEII = true;
+    } else if (payload.startsWith("xr:")) {
+      payload = payload.slice(3);
+      alphabet = outputAlphabetXKCD1105;
+      useRUNE = true;
+    } else if (payload.startsWith("xz:")) {
+      payload = payload.slice(3);
+      alphabet = outputAlphabetXKCD1105;
+      useBzip2 = true;
+    } else if (payload.startsWith("xb:")) {
+      payload = payload.slice(3);
+      alphabet = outputAlphabetXKCD1105;
+      useBWT = true;
+    } else if (payload.startsWith("xe:")) {
+      payload = payload.slice(3);
+      alphabet = outputAlphabetXKCD1105;
+      useENUR = true;
+    } else if (payload.startsWith("x:")) {
+      payload = payload.slice(2);
+      alphabet = outputAlphabetXKCD1105;
+    } else if (payload.startsWith("E:")) {
+      payload = payload.slice(2);
+      alphabet = outputAlphabetQR;
+      useENUR = true;
+    } else if (payload.startsWith("R2:")) {
+      payload = payload.slice(3);
+      alphabet = outputAlphabetQR;
+      useRUNEII = true;
+    } else if (payload.startsWith("R:")) {
+      payload = payload.slice(2);
+      alphabet = outputAlphabetQR;
+      useRUNE = true;
+    } else if (payload.startsWith("Z:")) {
       payload = payload.slice(2);
       alphabet = outputAlphabetQR;
       useBzip2 = true;
@@ -114,6 +171,27 @@ function updatePreview () {
       payload = payload.slice(2);
       alphabet = outputAlphabetQR;
       useBWT = true;
+    } else if (payload.startsWith("eu:")) {
+      payload = payload.slice(3);
+      alphabet = outputAlphabetUnicode;
+      useENUR = true;
+    } else if (payload.startsWith("e:")) {
+      payload = payload.slice(2);
+      useENUR = true;
+    } else if (payload.startsWith("r2u:")) {
+      payload = payload.slice(4);
+      alphabet = outputAlphabetUnicode;
+      useRUNEII = true;
+    } else if (payload.startsWith("r2:")) {
+      payload = payload.slice(3);
+      useRUNEII = true;
+    } else if (payload.startsWith("ru:")) {
+      payload = payload.slice(3);
+      alphabet = outputAlphabetUnicode;
+      useRUNE = true;
+    } else if (payload.startsWith("r:")) {
+      payload = payload.slice(2);
+      useRUNE = true;
     } else if (payload.startsWith("zu:")) {
       payload = payload.slice(3);
       alphabet = outputAlphabetUnicode;
@@ -142,7 +220,25 @@ function updatePreview () {
         Array.from(payload).some(character => !outputAlphabetASCII.includes(character))) {
       alphabet = outputAlphabetEmoji;
     }
-    const target = useBzip2
+    if (useRUNE && alphabet === outputAlphabetASCII &&
+        Array.from(payload).some(character => !outputAlphabetASCII.includes(character))) {
+      alphabet = outputAlphabetEmoji;
+    }
+    if (useRUNEII && alphabet === outputAlphabetASCII &&
+        Array.from(payload).some(character => !outputAlphabetASCII.includes(character))) {
+      alphabet = outputAlphabetEmoji;
+    }
+    if (useENUR && alphabet === outputAlphabetASCII &&
+        Array.from(payload).some(character => !outputAlphabetASCII.includes(character))) {
+      alphabet = outputAlphabetEmoji;
+    }
+    const target = useENUR
+      ? decompressENUR(payload, alphabet)
+      : useRUNEII
+      ? decompressRUNEII(payload, alphabet)
+      : useRUNE
+      ? decompressRUNE(payload, alphabet)
+      : useBzip2
       ? decompressBzip2(payload, alphabet)
       : useBWT ? decompressBWT(payload, alphabet) : decompress(payload, alphabet);
     previewLinkElement.textContent = target;
@@ -155,20 +251,48 @@ function updatePreview () {
 
 previewPayloadElement.addEventListener("input", updatePreview);
 
+function getAlgorithmMarker (algorithm, qr = false) {
+  if (qr) {
+    return { normal: "", bwt: "B:", bzip2: "Z:", rune: "R:", rune2: "R2:", enur: "E:" }[algorithm];
+  }
+  if (settings.xkcd1105) {
+    return { normal: "x:", bwt: "xb:", bzip2: "xz:", rune: "xr:", rune2: "xr2:", enur: "xe:" }[algorithm];
+  }
+  if (settings.unicode) {
+    return { normal: "u:", bwt: "bu:", bzip2: "zu:", rune: "ru:", rune2: "r2u:", enur: "eu:" }[algorithm];
+  }
+  return { normal: "", bwt: "b:", bzip2: "z:", rune: "r:", rune2: "r2:", enur: "e:" }[algorithm];
+}
+
 function updateOutput () {
   const input = inputLinkElement.value.trim();
   try {
     const alphabet = settings.unicode
       ? outputAlphabetUnicode
+      : settings.xkcd1105 ? outputAlphabetXKCD1105
       : settings.emoji ? outputAlphabetEmoji : outputAlphabetASCII;
     const rootURL = getRootURL();
-    const output = settings.bzip2
-      ? compressBzip2(input, alphabet)
-      : settings.bwt ? compressBWT(input, alphabet) : compress(input, alphabet);
-    const modePrefix = settings.bzip2
-      ? settings.unicode ? "zu:" : "z:"
-      : settings.bwt ? settings.unicode ? "bu:" : "b:"
-        : settings.unicode ? "u:" : "";
+    let algorithm = settings.enur ? "enur"
+      : settings.rune2 ? "rune2"
+        : settings.rune ? "rune"
+          : settings.bzip2 ? "bzip2"
+            : settings.bwt ? "bwt" : "normal";
+    let output;
+    if (settings.auto) {
+      const best = selectBestCompression(input, alphabet);
+      algorithm = best.algorithm;
+      output = best.payload;
+    } else {
+      output = {
+        normal: compress,
+        bwt: compressBWT,
+        bzip2: compressBzip2,
+        rune: compressRUNE,
+        rune2: compressRUNEII,
+        enur: compressENUR
+      }[algorithm](input, alphabet);
+    }
+    const modePrefix = getAlgorithmMarker(algorithm);
     let inputNormalized = input;
     if (input.startsWith("https://")) {
       inputNormalized = input.slice(8);
@@ -200,6 +324,17 @@ function updateOutput () {
       outputRatioElement.textContent = "Output is the same length as the input";
       outputRatioElement.style.color = "gray";
     }
+    if (settings.auto) {
+      const algorithmName = {
+        normal: "semantic compression",
+        bwt: "BWT",
+        bzip2: "bzip2",
+        rune: "RUNE",
+        rune2: "RUNE-II",
+        enur: "ENUR"
+      }[algorithm];
+      outputRatioElement.textContent += ` — Auto selected ${algorithmName}`;
+    }
     const payload = `${modePrefix}${output}`;
     const outputURL = `${rootURL}#${payload}`;
     outputLinkElement.textContent = settings.payloadOnly ? payload : outputURL;
@@ -216,10 +351,23 @@ function updateOutput () {
       qrCodeCorrectionLevelContainer.style.display = "inline";
       // Uppercase QR URLs remain in the QR alphanumeric mode, reducing QR
       // overhead, while still using whichever host serves this deployment.
-      const qrPayload = settings.bwt
-        ? `B:${compressBWT(input, outputAlphabetQR)}`
-        : settings.bzip2 ? `Z:${compressBzip2(input, outputAlphabetQR)}`
-          : compress(input, outputAlphabetQR);
+      let qrAlgorithm = algorithm;
+      let qrOutput;
+      if (settings.auto) {
+        const best = selectBestCompression(input, outputAlphabetQR);
+        qrAlgorithm = best.algorithm;
+        qrOutput = best.payload;
+      } else {
+        qrOutput = {
+          normal: compress,
+          bwt: compressBWT,
+          bzip2: compressBzip2,
+          rune: compressRUNE,
+          rune2: compressRUNEII,
+          enur: compressENUR
+        }[qrAlgorithm](input, outputAlphabetQR);
+      }
+      const qrPayload = getAlgorithmMarker(qrAlgorithm, true) + qrOutput;
       let qrCodeLink = `${rootURL.toUpperCase()}/${qrPayload}`;
       QRCode.toDataURL(qrCodeLink, {
         errorCorrectionLevel: errorCorrection,
@@ -280,6 +428,9 @@ copyOutputElement.addEventListener("click", async () => {
   let alphabet = outputAlphabetASCII;
   let useBWT = false;
   let useBzip2 = false;
+  let useRUNE = false;
+  let useRUNEII = false;
+  let useENUR = false;
 
   // Get hash value of current address bar
   if (window.location.hash) {
@@ -291,7 +442,51 @@ copyOutputElement.addEventListener("click", async () => {
       // A raw percent sign is a valid digit in the Unicode alphabet.
       payload = fragment;
     }
-    if (payload.startsWith("zu:")) {
+    if (payload.startsWith("xr2:")) {
+      payload = payload.slice(4);
+      alphabet = outputAlphabetXKCD1105;
+      useRUNEII = true;
+    } else if (payload.startsWith("xr:")) {
+      payload = payload.slice(3);
+      alphabet = outputAlphabetXKCD1105;
+      useRUNE = true;
+    } else if (payload.startsWith("xz:")) {
+      payload = payload.slice(3);
+      alphabet = outputAlphabetXKCD1105;
+      useBzip2 = true;
+    } else if (payload.startsWith("xb:")) {
+      payload = payload.slice(3);
+      alphabet = outputAlphabetXKCD1105;
+      useBWT = true;
+    } else if (payload.startsWith("xe:")) {
+      payload = payload.slice(3);
+      alphabet = outputAlphabetXKCD1105;
+      useENUR = true;
+    } else if (payload.startsWith("x:")) {
+      payload = payload.slice(2);
+      alphabet = outputAlphabetXKCD1105;
+    } else if (payload.startsWith("eu:")) {
+      payload = payload.slice(3);
+      alphabet = outputAlphabetUnicode;
+      useENUR = true;
+    } else if (payload.startsWith("e:")) {
+      payload = payload.slice(2);
+      useENUR = true;
+    } else if (payload.startsWith("r2u:")) {
+      payload = payload.slice(4);
+      alphabet = outputAlphabetUnicode;
+      useRUNEII = true;
+    } else if (payload.startsWith("r2:")) {
+      payload = payload.slice(3);
+      useRUNEII = true;
+    } else if (payload.startsWith("ru:")) {
+      payload = payload.slice(3);
+      alphabet = outputAlphabetUnicode;
+      useRUNE = true;
+    } else if (payload.startsWith("r:")) {
+      payload = payload.slice(2);
+      useRUNE = true;
+    } else if (payload.startsWith("zu:")) {
       payload = payload.slice(3);
       alphabet = outputAlphabetUnicode;
       useBzip2 = true;
@@ -309,7 +504,7 @@ copyOutputElement.addEventListener("click", async () => {
       payload = payload.slice(2);
       useBWT = true;
     }
-    if (alphabet !== outputAlphabetUnicode) {
+    if (alphabet !== outputAlphabetUnicode && alphabet !== outputAlphabetXKCD1105) {
       // Legacy alphabets never use spaces and older links may contain them.
       payload = payload.replaceAll(" ", "");
       // Legacy links have no mode marker, so retain their original detection.
@@ -321,7 +516,16 @@ copyOutputElement.addEventListener("click", async () => {
     // For that, use the path instead
     payload = decodeURIComponent(window.location.pathname.slice(1));
     alphabet = outputAlphabetQR;
-    if (payload.startsWith("B:")) {
+    if (payload.startsWith("E:")) {
+      payload = payload.slice(2);
+      useENUR = true;
+    } else if (payload.startsWith("R2:")) {
+      payload = payload.slice(3);
+      useRUNEII = true;
+    } else if (payload.startsWith("R:")) {
+      payload = payload.slice(2);
+      useRUNE = true;
+    } else if (payload.startsWith("B:")) {
       payload = payload.slice(2);
       useBWT = true;
     } else if (payload.startsWith("Z:")) {
@@ -332,7 +536,13 @@ copyOutputElement.addEventListener("click", async () => {
 
   if (payload && payload.trim()) {
     try {
-      const target = useBzip2
+      const target = useENUR
+        ? decompressENUR(payload, alphabet)
+        : useRUNEII
+        ? decompressRUNEII(payload, alphabet)
+        : useRUNE
+        ? decompressRUNE(payload, alphabet)
+        : useBzip2
         ? decompressBzip2(payload, alphabet)
         : useBWT ? decompressBWT(payload, alphabet) : decompress(payload, alphabet);
       window.location.href = target;

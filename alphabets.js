@@ -1,5 +1,6 @@
 export const outputAlphabetASCII = "!#$&'()*+,-./0123456789:;=?~@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]_abcdefghijklmnopqrstuvwxyz".split("");
 export const outputAlphabetQR = "$*+-./:0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+export const outputAlphabetXKCD1105 = ["I", "1"];
 
 // Every assigned, printable Unicode code point. Build this at runtime instead
 // of checking a very large generated table into the repository. Controls,

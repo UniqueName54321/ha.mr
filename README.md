@@ -24,6 +24,32 @@ A URL-safe bzip2 variant is also available. It retains bzip2's BWT,
 move-to-front, run-length, and canonical Huffman stages, while replacing its
 file container with the app's URL-alphabet encoding and compact mode markers.
 
+RUNE (Recursive URL Number Encoding) targets tracking and redirect links whose
+query parameters contain another URL. It semantically compresses the outer and
+nested URLs independently, then combines their arbitrary-precision streams
+directly with mixed-radix packing. Non-nested URLs fall back losslessly to the
+normal codec with a small format marker.
+
+RUNE-II adds a collision-safe structural dictionary for common redirect,
+advertising, analytics, auction and UTM query fields and fixed values. Aliases
+are applied independently inside each URL stream before RUNE packing, and
+escaped when an original key or value could resemble a token. Its links use
+`r2:`, `r2u:` and QR-friendly `R2:` markers so RUNE-I remains compatible.
+
+ENUR is the deliberately counterproductive inverse philosophy: it expands each
+canonical UTF-8 byte into four copies interleaved with four bitwise complements.
+The resulting eightfold ceremonial redundancy is lossless, corruption-detecting
+and intentionally enormous. ENUR uses `e:`, `eu:` and QR `E:` markers.
+
+The `xkcd1105` alphabet is Base2 and contains only `I` and `1`, inspired by
+[xkcd #1105](https://xkcd.com/1105/). Its explicit `x:` marker family keeps the
+binary-looking payload distinguishable from ordinary Base84 links.
+
+Auto-algorithm evaluates every lossless codec for the selected alphabet,
+includes the required mode marker in each measurement, discards algorithms
+that reject the input, and emits the shortest complete result. The winning
+codec's existing marker is retained, so auto-generated links need no new format.
+
 ## Acknowledgements
 - https://www.npmjs.com/package/qrcode
 - https://github.com/smythp/reddit_links_dataset
