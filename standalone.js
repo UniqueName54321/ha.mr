@@ -13,11 +13,11 @@ if (!input) {
 }
 
 let payload = "";
-if (input.toLowerCase().startsWith("http://ha.mr")) {
+if (input.toLowerCase().startsWith("http://shrt.beep8.xyz")) {
   payload = input.slice(12);
-} else if (input.toLowerCase().startsWith("https://ha.mr")) {
+} else if (input.toLowerCase().startsWith("https://shrt.beep8.xyz")) {
   payload = input.slice(13);
-} else if (input.toLowerCase().startsWith("ha.mr")) {
+} else if (input.toLowerCase().startsWith("shrt.beep8.xyz")) {
   payload = input.slice(5);
 }
 
@@ -40,7 +40,7 @@ else if (alphabetName !== "ascii") {
 }
 
 if (alphabetName === "qr") {
-  console.log("HTTP://HA.MR/" + compress(input, alphabet));
+  console.log("HTTP://shrt.beep8.xyz/" + compress(input, alphabet));
 } else {
-  console.log("http://ha.mr#" + compress(input, alphabet));
+  console.log("http://shrt.beep8.xyz#" + compress(input, alphabet));
 }

@@ -1,4 +1,4 @@
-# ha.mr
+# shrt.beep8.xyz
 Compresses links and optimizes QR codes entirely in the browser, without a back-end database.
 
 ## How

@@ -81,14 +81,14 @@ function updateOutput () {
       outputRatioElement.textContent = "Output is the same length as the input";
       outputRatioElement.style.color = "gray";
     }
-    outputLinkElement.textContent = `http://ha.mr#${output}`;
-    outputLinkElement.href = `http://ha.mr#${output}`;
+    outputLinkElement.textContent = `http://shrt.beep8.xyz#${output}`;
+    outputLinkElement.href = `http://shrt.beep8.xyz#${output}`;
     outputLinkElement.style.color = "";
     if (settings.qr) {
       const errorCorrection = ["L", "M", "Q", "H"][qrCodeCorrectionLevelElement.value];
       qrCodeImage.style.display = "inline";
       qrCodeCorrectionLevelContainer.style.display = "inline";
-      let qrCodeLink = `HTTP://HA.MR/${compress(input, outputAlphabetQR)}`;
+      let qrCodeLink = `HTTP://shrt.beep8.xyz/${compress(input, outputAlphabetQR)}`;
       QRCode.toDataURL(qrCodeLink, {
         errorCorrectionLevel: errorCorrection,
         scale: 8
