@@ -16,6 +16,14 @@ forked deployments automatically point at themselves. The standalone CLI uses
 `http://shrt.beep8.xyz` by default and can be pointed elsewhere with the
 `HAMR_ROOT_URL` environment variable.
 
+The frontend can optionally apply a byte-level Burrows–Wheeler transform and
+run-length encoding before alphabet encoding. BWT payloads carry a mode marker,
+so redirects and the payload preview can decode them automatically.
+
+A URL-safe bzip2 variant is also available. It retains bzip2's BWT,
+move-to-front, run-length, and canonical Huffman stages, while replacing its
+file container with the app's URL-alphabet encoding and compact mode markers.
+
 ## Acknowledgements
 - https://www.npmjs.com/package/qrcode
 - https://github.com/smythp/reddit_links_dataset

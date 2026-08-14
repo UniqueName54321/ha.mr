@@ -143,6 +143,248 @@ function stringToNumber (string, alphabet) {
   return number;
 }
 
+function bwtTransform (bytes) {
+  if (!bytes.length) return { bytes, index: 0 };
+  const rotations = Array.from(bytes, (_, index) => index);
+  rotations.sort((a, b) => {
+    for (let offset = 0; offset < bytes.length; offset ++) {
+      const difference = bytes[(a + offset) % bytes.length] - bytes[(b + offset) % bytes.length];
+      if (difference) return difference;
+    }
+    return 0;
+  });
+  return {
+    bytes: Uint8Array.from(rotations.map(index => bytes[(index + bytes.length - 1) % bytes.length])),
+    index: rotations.indexOf(0)
+  };
+}
+
+function bwtInverse (lastColumn, index) {
+  if (!lastColumn.length) return lastColumn;
+  const counts = new Uint32Array(256);
+  const occurrences = new Uint32Array(lastColumn.length);
+  for (let i = 0; i < lastColumn.length; i ++) occurrences[i] = counts[lastColumn[i]] ++;
+  const starts = new Uint32Array(256);
+  for (let byte = 1; byte < 256; byte ++) starts[byte] = starts[byte - 1] + counts[byte - 1];
+  const next = new Uint32Array(lastColumn.length);
+  for (let i = 0; i < lastColumn.length; i ++) next[starts[lastColumn[i]] + occurrences[i]] = i;
+  const output = new Uint8Array(lastColumn.length);
+  let row = index;
+  for (let i = 0; i < output.length; i ++) {
+    row = next[row];
+    output[i] = lastColumn[row];
+  }
+  return output;
+}
+
+function runLengthEncode (bytes) {
+  const output = [];
+  for (let i = 0; i < bytes.length;) {
+    let count = 1;
+    while (count < 255 && i + count < bytes.length && bytes[i + count] === bytes[i]) count ++;
+    output.push(count, bytes[i]);
+    i += count;
+  }
+  return Uint8Array.from(output);
+}
+
+function runLengthDecode (bytes) {
+  if (bytes.length % 2) throw new Error("Invalid BWT run-length stream.");
+  const output = [];
+  for (let i = 0; i < bytes.length; i += 2) {
+    if (!bytes[i]) throw new Error("Invalid zero-length BWT run.");
+    for (let count = 0; count < bytes[i]; count ++) output.push(bytes[i + 1]);
+  }
+  return Uint8Array.from(output);
+}
+
+function moveToFrontEncode (bytes) {
+  const symbols = Array.from({ length: 256 }, (_, index) => index);
+  return Uint8Array.from(bytes, byte => {
+    const index = symbols.indexOf(byte);
+    symbols.splice(index, 1);
+    symbols.unshift(byte);
+    return index;
+  });
+}
+
+function moveToFrontDecode (bytes) {
+  const symbols = Array.from({ length: 256 }, (_, index) => index);
+  return Uint8Array.from(bytes, index => {
+    if (index >= symbols.length) throw new Error("Invalid move-to-front index.");
+    const byte = symbols[index];
+    symbols.splice(index, 1);
+    symbols.unshift(byte);
+    return byte;
+  });
+}
+
+function huffmanLengths (bytes) {
+  const frequencies = new Uint32Array(256);
+  for (const byte of bytes) frequencies[byte] ++;
+  const nodes = [];
+  for (let symbol = 0; symbol < 256; symbol ++) {
+    if (frequencies[symbol]) nodes.push({ frequency: frequencies[symbol], symbol });
+  }
+  if (nodes.length === 1) return new Map([[nodes[0].symbol, 1]]);
+  while (nodes.length > 1) {
+    nodes.sort((a, b) => a.frequency - b.frequency);
+    const left = nodes.shift();
+    const right = nodes.shift();
+    nodes.push({ frequency: left.frequency + right.frequency, left, right });
+  }
+  const lengths = new Map();
+  const visit = (node, depth) => {
+    if (node.symbol !== undefined) lengths.set(node.symbol, depth);
+    else {
+      visit(node.left, depth + 1);
+      visit(node.right, depth + 1);
+    }
+  };
+  visit(nodes[0], 0);
+  return lengths;
+}
+
+function canonicalHuffmanCodes (lengths) {
+  const entries = Array.from(lengths, ([symbol, length]) => ({ symbol, length }))
+    .sort((a, b) => a.length - b.length || a.symbol - b.symbol);
+  let code = 0n;
+  let previousLength = 0;
+  for (const entry of entries) {
+    code <<= BigInt(entry.length - previousLength);
+    entry.code = code ++;
+    previousLength = entry.length;
+  }
+  return entries;
+}
+
+function huffmanCompress (bytes) {
+  const entries = canonicalHuffmanCodes(huffmanLengths(bytes));
+  const codes = new Map(entries.map(entry => [entry.symbol, entry]));
+  const output = [];
+  let buffer = 0;
+  let bufferedBits = 0;
+  let bitLength = 0;
+  for (const byte of bytes) {
+    const entry = codes.get(byte);
+    for (let bit = entry.length - 1; bit >= 0; bit --) {
+      buffer = buffer << 1 | Number(entry.code >> BigInt(bit) & 1n);
+      if (++ bufferedBits === 8) {
+        output.push(buffer);
+        buffer = 0;
+        bufferedBits = 0;
+      }
+      bitLength ++;
+    }
+  }
+  if (bufferedBits) output.push(buffer << (8 - bufferedBits));
+  return { entries, bytes: Uint8Array.from(output), bitLength };
+}
+
+function huffmanDecompress (bytes, bitLength, entries, outputLength) {
+  const lookup = new Map(entries.map(entry => [`${entry.length}:${entry.code}`, entry.symbol]));
+  const output = [];
+  let code = 0n;
+  let length = 0;
+  for (let bitIndex = 0; bitIndex < bitLength; bitIndex ++) {
+    code = code << 1n | BigInt(bytes[bitIndex >> 3] >> (7 - (bitIndex & 7)) & 1);
+    length ++;
+    const symbol = lookup.get(`${length}:${code}`);
+    if (symbol !== undefined) {
+      output.push(symbol);
+      code = 0n;
+      length = 0;
+    }
+  }
+  if (length || output.length !== outputLength) throw new Error("Invalid Huffman stream.");
+  return Uint8Array.from(output);
+}
+
+function byteStreamToString (index, bytes, alphabet) {
+  let number = BigInt(index + 1);
+  for (const byte of bytes) number = number * 256n + BigInt(byte);
+  number = (number << 32n) + BigInt(bytes.length);
+  return numberToString(number, alphabet);
+}
+
+function stringToByteStream (input, alphabet) {
+  let number = stringToNumber(input, alphabet);
+  const length = Number(number & 0xFFFFFFFFn);
+  number >>= 32n;
+  if (length > 10_000_000) throw new Error("Compressed payload is too large.");
+  const bytes = new Uint8Array(length);
+  for (let i = length - 1; i >= 0; i --) {
+    bytes[i] = Number(number % 256n);
+    number /= 256n;
+  }
+  return { index: Number(number - 1n), bytes };
+}
+
+export function compressBWT (input, alphabet) {
+  // Reuse the normal codec to obtain exactly the canonical URL that a normal
+  // compressed link would redirect to before applying the preparatory BWT.
+  const canonical = decompress(compress(input, alphabet), alphabet);
+  const inputBytes = new TextEncoder().encode(canonical);
+  if (inputBytes.length > 8192) throw new Error("BWT input exceeds the 8192-byte safety limit.");
+  const transformed = bwtTransform(inputBytes);
+  const encoded = runLengthEncode(transformed.bytes);
+  let number = BigInt(transformed.index + 1);
+  for (const byte of encoded) number = number * 256n + BigInt(byte);
+  number = (number << 32n) + BigInt(encoded.length);
+  return numberToString(number, alphabet);
+}
+
+export function decompressBWT (input, alphabet) {
+  const { index, bytes: encoded } = stringToByteStream(input, alphabet);
+  const transformed = runLengthDecode(encoded);
+  if (index < 0 || index >= transformed.length) throw new Error("Invalid BWT primary index.");
+  return new TextDecoder("utf-8", { fatal: true }).decode(bwtInverse(transformed, index));
+}
+
+export function compressBzip2 (input, alphabet) {
+  const canonical = decompress(compress(input, alphabet), alphabet);
+  const inputBytes = new TextEncoder().encode(canonical);
+  if (inputBytes.length > 8192) throw new Error("bzip2 input exceeds the 8192-byte safety limit.");
+  const transformed = bwtTransform(inputBytes);
+  const prepared = runLengthEncode(moveToFrontEncode(transformed.bytes));
+  const huffman = huffmanCompress(prepared);
+  const header = [];
+  header.push(huffman.entries.length >> 8, huffman.entries.length & 255);
+  for (const entry of huffman.entries) header.push(entry.symbol, entry.length);
+  for (const value of [prepared.length, huffman.bitLength]) {
+    header.push(value >>> 24, value >>> 16 & 255, value >>> 8 & 255, value & 255);
+  }
+  return byteStreamToString(transformed.index, Uint8Array.from([...header, ...huffman.bytes]), alphabet);
+}
+
+export function decompressBzip2 (input, alphabet) {
+  const { index, bytes } = stringToByteStream(input, alphabet);
+  if (bytes.length < 12) throw new Error("Truncated bzip2 payload.");
+  let offset = 0;
+  const entryCount = bytes[offset ++] << 8 | bytes[offset ++];
+  if (!entryCount || entryCount > 256) throw new Error("Invalid bzip2 Huffman table.");
+  if (bytes.length < 2 + entryCount * 2 + 8) throw new Error("Truncated bzip2 header.");
+  const lengths = new Map();
+  for (let i = 0; i < entryCount; i ++) {
+    const symbol = bytes[offset ++];
+    const length = bytes[offset ++];
+    if (!length || lengths.has(symbol)) throw new Error("Invalid bzip2 Huffman entry.");
+    lengths.set(symbol, length);
+  }
+  const readUint32 = () => (bytes[offset ++] * 0x1000000) +
+    (bytes[offset ++] << 16) + (bytes[offset ++] << 8) + bytes[offset ++];
+  const preparedLength = readUint32();
+  const bitLength = readUint32();
+  if (preparedLength > 10_000_000 || bitLength > (bytes.length - offset) * 8) {
+    throw new Error("Invalid bzip2 stream length.");
+  }
+  const entries = canonicalHuffmanCodes(lengths);
+  const prepared = huffmanDecompress(bytes.slice(offset), bitLength, entries, preparedLength);
+  const transformed = moveToFrontDecode(runLengthDecode(prepared));
+  if (index < 0 || index >= transformed.length) throw new Error("Invalid bzip2 primary index.");
+  return new TextDecoder("utf-8", { fatal: true }).decode(bwtInverse(transformed, index));
+}
+
 /**
  * Encodes a binary sequence from a string into the number/data stream.
  * @param {BigInt} number Data stream to encode to
