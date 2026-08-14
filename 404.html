@@ -80,6 +80,38 @@
       font-size: 16px;
       background-color: rgb(230, 230, 230);
     }
+    #settings-root-url {
+      width: min(340px, 75vw);
+      padding: 5px 8px;
+      border: 1px solid lightgray;
+      border-radius: 8px;
+      font-size: 0.85em;
+      background: rgb(248, 248, 248);
+    }
+    #preview-container {
+      width: min(760px, 90vw);
+      margin: 12px 0 4px;
+      padding: 12px;
+      box-sizing: border-box;
+      border: 1px solid rgba(70, 90, 130, 0.18);
+      border-radius: 12px;
+      background: rgb(248, 250, 255);
+      text-align: center;
+    }
+    #preview-payload {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 7px 9px;
+      border: 1px solid lightgray;
+      border-radius: 8px;
+      font-family: sans-serif;
+    }
+    #preview-link {
+      display: block;
+      margin-top: 8px;
+      overflow-wrap: anywhere;
+      color: rgb(50, 100, 255);
+    }
     #output-link-container {
       margin: 10px 0 0 0;
       text-align: center;
@@ -174,6 +206,12 @@
       <br><span id="output-ratio">&nbsp;</span>
     </p>
 
+    <div id="preview-container">
+      <label for="preview-payload">Preview compressed payload</label>
+      <input type="text" id="preview-payload" placeholder="Paste only the part after #" autocomplete="off" spellcheck="false">
+      <a id="preview-link" target="_blank">Paste a compressed payload to preview it</a>
+    </div>
+
     <image width="256" height="256" id="qrcode"></image>
 
     <span id="qr-correct-level-container">
@@ -189,6 +227,14 @@
     <span>
       <input type="checkbox" id="settings-unicode" name="settings-unicode" autocomplete="off">
       <label for="settings-unicode"> Use every printable Unicode character, including emoji (Base159629)</label><br>
+    </span>
+    <span>
+      <input type="checkbox" id="settings-payload-only" name="settings-payload-only" autocomplete="off">
+      <label for="settings-payload-only"> Show compressed payload only (for manual insertion)</label><br>
+    </span>
+    <span>
+      <label for="settings-root-url">Root URL</label><br>
+      <input type="url" id="settings-root-url" name="settings-root-url" placeholder="http://ha.mr" autocomplete="url" spellcheck="false">
     </span>
     <span>
       <input type="checkbox" id="settings-qr" name="settings-qr" autocomplete="off">

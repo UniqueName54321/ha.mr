@@ -9,12 +9,14 @@ import {
 var settings = {
   emoji: false,
   unicode: false,
+  payloadOnly: false,
   qr: false
 };
 
 const settingsElements = {
   emoji: "#settings-emoji",
   unicode: "#settings-unicode",
+  payloadOnly: "#settings-payload-only",
   qr: "#settings-qr"
 };
 
@@ -47,12 +49,64 @@ const outputLinkElement = document.querySelector("#output-link");
 const copyOutputElement = document.querySelector("#copy-output");
 const outputRatioElement = document.querySelector("#output-ratio");
 const queryWarningElement = document.querySelector("#query-warning");
-const rootURL = window.location.origin;
+const previewPayloadElement = document.querySelector("#preview-payload");
+const previewLinkElement = document.querySelector("#preview-link");
+const rootURLInputElement = document.querySelector("#settings-root-url");
+rootURLInputElement.value = window.location.origin;
+rootURLInputElement.addEventListener("input", updateOutput);
+
+function getRootURL () {
+  let root;
+  try {
+    root = new URL(rootURLInputElement.value.trim());
+  } catch {
+    rootURLInputElement.setCustomValidity("Enter a valid root URL.");
+    throw new Error("Invalid root URL.");
+  }
+  if (root.protocol !== "http:" && root.protocol !== "https:") {
+    rootURLInputElement.setCustomValidity("Root URL must use HTTP or HTTPS.");
+    throw new Error("Root URL must use HTTP or HTTPS.");
+  }
+  rootURLInputElement.setCustomValidity("");
+  root.search = "";
+  root.hash = "";
+  return root.href.replace(/\/$/, "");
+}
 
 const qrCodeImage = document.querySelector("#qrcode");
 const qrCodeCorrectionLevelContainer = document.querySelector("#qr-correct-level-container");
 const qrCodeCorrectionLevelElement = document.querySelector("#qr-correct-level");
 qrCodeCorrectionLevelElement.addEventListener("change", updateOutput);
+
+function updatePreview () {
+  // Do not trim: spaces are valid digits in the all-Unicode alphabet.
+  let payload = previewPayloadElement.value;
+  previewLinkElement.removeAttribute("href");
+  previewLinkElement.style.color = "";
+
+  if (!payload) {
+    previewLinkElement.textContent = "Paste a compressed payload to preview it";
+    return;
+  }
+
+  try {
+    let alphabet = outputAlphabetASCII;
+    if (payload.startsWith("u:")) {
+      payload = payload.slice(2);
+      alphabet = outputAlphabetUnicode;
+    } else if (Array.from(payload).some(character => !outputAlphabetASCII.includes(character))) {
+      alphabet = outputAlphabetEmoji;
+    }
+    const target = decompress(payload, alphabet);
+    previewLinkElement.textContent = target;
+    previewLinkElement.href = target;
+  } catch (error) {
+    previewLinkElement.textContent = "Invalid compressed payload";
+    previewLinkElement.style.color = "rgb(255, 50, 50)";
+  }
+}
+
+previewPayloadElement.addEventListener("input", updatePreview);
 
 function updateOutput () {
   const input = inputLinkElement.value.trim();
@@ -60,6 +114,7 @@ function updateOutput () {
     const alphabet = settings.unicode
       ? outputAlphabetUnicode
       : settings.emoji ? outputAlphabetEmoji : outputAlphabetASCII;
+    const rootURL = getRootURL();
     const output = compress(input, alphabet);
     const modePrefix = settings.unicode ? "u:" : "";
     let inputNormalized = input;
@@ -81,11 +136,9 @@ function updateOutput () {
       queryWarningElement.style.display = "none";
     }
     const symbolCount = settings.unicode ? Array.from(output).length : countSymbols(output, alphabet);
-    const ratio = (1 - (symbolCount + modePrefix.length + 6) / inputNormalized.length) * 100;
-    if (ratio < -300) {
-      outputRatioElement.textContent = `Output is much larger than the input`;
-      outputRatioElement.style.color = "rgb(255, 50, 50)";
-    } else if (ratio < 0) {
+    const rootSymbolCount = settings.payloadOnly ? 0 : Array.from(rootURL).length + 1;
+    const ratio = (1 - (symbolCount + modePrefix.length + rootSymbolCount) / inputNormalized.length) * 100;
+    if (ratio < 0) {
       outputRatioElement.textContent = `Output is ${Math.floor(-ratio)}% larger than the input`;
       outputRatioElement.style.color = "rgb(255, 50, 50)";
     } else if (ratio > 0) {
@@ -95,9 +148,15 @@ function updateOutput () {
       outputRatioElement.textContent = "Output is the same length as the input";
       outputRatioElement.style.color = "gray";
     }
-    const outputURL = `${rootURL}#${modePrefix}${output}`;
-    outputLinkElement.textContent = outputURL;
-    outputLinkElement.href = outputURL;
+    const payload = `${modePrefix}${output}`;
+    const outputURL = `${rootURL}#${payload}`;
+    outputLinkElement.textContent = settings.payloadOnly ? payload : outputURL;
+    outputLinkElement.dataset.copyable = "true";
+    if (settings.payloadOnly) {
+      outputLinkElement.removeAttribute("href");
+    } else {
+      outputLinkElement.href = outputURL;
+    }
     outputLinkElement.style.color = "";
     if (settings.qr) {
       const errorCorrection = ["L", "M", "Q", "H"][qrCodeCorrectionLevelElement.value];
@@ -125,6 +184,9 @@ function updateOutput () {
   } catch (e) {
     if (!input.trim()) {
       outputLinkElement.textContent = "Enter a link above to compress";
+    } else if (!rootURLInputElement.checkValidity()) {
+      outputLinkElement.textContent = "Invalid root URL";
+      outputLinkElement.style.color = "rgb(255, 50, 50)";
     } else {
       outputLinkElement.textContent = "Invalid link";
       outputLinkElement.style.color = "rgb(255, 50, 50)";
@@ -134,12 +196,13 @@ function updateOutput () {
     qrCodeCorrectionLevelContainer.style.display = "none";
     outputRatioElement.style.color = "rgba(255, 255, 255, 0)";
     outputLinkElement.removeAttribute("href");
+    delete outputLinkElement.dataset.copyable;
     queryWarningElement.style.display = "none";
   }
 }
 inputLinkElement.addEventListener("input", updateOutput);
 copyOutputElement.addEventListener("click", async () => {
-  if (!outputLinkElement.href) return;
+  if (!outputLinkElement.dataset.copyable) return;
   const value = outputLinkElement.textContent;
   try {
     await navigator.clipboard.writeText(value);
